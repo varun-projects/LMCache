@@ -34,7 +34,7 @@ def _post_completion(*segments: Sequence[tuple[int, str]]):
     remaining = list(segments)
 
     def post_completion(
-        tokens: Sequence[int], sampling_params: dict[str, Any], cache_salt: str
+        prompt_token_ids: list[int], sampling_params: dict[str, Any], cache_salt: str
     ) -> Iterable[TokenEvent]:
         return [TokenEvent(token_id=tid, text=text) for tid, text in remaining.pop(0)]
 
@@ -138,7 +138,7 @@ def test_failed_generation_still_records_tokens_seen_before_the_error() -> None:
     """Partial segments are retained so the history matches what was decoded."""
 
     def post_completion(
-        tokens: Sequence[int], sampling_params: dict[str, Any], cache_salt: str
+        prompt_token_ids: list[int], sampling_params: dict[str, Any], cache_salt: str
     ) -> Iterable[TokenEvent]:
         yield TokenEvent(token_id=201, text="a")
         raise RuntimeError("engine died")
