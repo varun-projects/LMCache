@@ -222,3 +222,121 @@ def test_put_completion_handoff_does_not_reregister_resident_key() -> None:
     cast(MagicMock, backend.cache_policy.update_on_put).assert_not_called()
     cast(MagicMock, memory_obj.ref_count_up).assert_not_called()
     schedule.assert_not_called()
+
+
+def _resident_metadata(size: int, path: str, *, can_evict: bool) -> SimpleNamespace:
+    return SimpleNamespace(size=size, can_evict=can_evict, path=path)
+
+
+def _create_backend_with_real_remove(
+    *,
+    current_cache_size: int,
+    max_cache_size: int,
+    entries: dict[CacheEngineKey, SimpleNamespace],
+) -> LocalDiskBackend:
+    """Build a backend whose remove()/batched_remove() run for real.
+
+    _create_backend stubs batched_remove, which hides the interaction between
+    eviction and the tracked byte count that these tests exercise.
+    """
+    backend = _create_backend(
+        current_cache_size=current_cache_size,
+        max_cache_size=max_cache_size,
+        entries=entries,
+    )
+    del backend.batched_remove
+    backend.usage = current_cache_size
+    backend.stats_monitor = MagicMock()
+    backend.batched_msg_sender = None
+    return backend
+
+
+def _write_chunk(tmp_path, name: str, size: int) -> str:
+    path = tmp_path / name
+    path.write_bytes(b"\0" * size)
+    return str(path)
+
+
+def test_external_remove_releases_tracked_bytes(tmp_path) -> None:
+    """remove() must release admission capacity, not just the usage gauge.
+
+    Only the eviction path used to deduct from current_cache_size, so bytes
+    freed by external invalidation were never given back.
+    """
+    key = _create_key(1)
+    backend = _create_backend_with_real_remove(
+        current_cache_size=100,
+        max_cache_size=100,
+        entries={
+            key: _resident_metadata(
+                100, _write_chunk(tmp_path, "a", 100), can_evict=True
+            )
+        },
+    )
+
+    assert backend.remove(key) is True
+
+    assert backend.current_cache_size == 0
+    assert backend.usage == 0
+
+
+def test_put_is_admitted_again_after_external_remove(tmp_path) -> None:
+    """The admission gate must reopen once an external remove frees space.
+
+    With the leak, current_cache_size stayed at capacity forever and every
+    later put was dropped while logging that the disk was under pressure.
+    """
+    resident = _create_key(1)
+    key = _create_key(2)
+    backend = _create_backend_with_real_remove(
+        current_cache_size=100,
+        max_cache_size=100,
+        entries={
+            resident: _resident_metadata(
+                100, _write_chunk(tmp_path, "a", 100), can_evict=False
+            )
+        },
+    )
+    backend.remove(resident)
+
+    with patch(
+        "lmcache.v1.storage_backend.local_disk_backend.asyncio.run_coroutine_threadsafe"
+    ) as schedule:
+        backend.submit_put_task(key, _create_memory_obj(100))
+
+    assert key in backend.disk_worker.put_tasks
+    assert backend.current_cache_size == 100
+    schedule.assert_called_once()
+
+
+def test_eviction_does_not_release_the_same_bytes_twice(tmp_path) -> None:
+    """Eviction must account each freed chunk once.
+
+    The eviction loop previously deducted the chunk size itself before
+    delegating to remove(); now that remove() owns the deduction, a second
+    deduction here would under-count resident bytes and let the disk grow
+    without bound. The loop also relies on remove() for its termination
+    condition, so this covers that it still converges.
+    """
+    evictable = _create_key(1)
+    key = _create_key(2)
+    backend = _create_backend_with_real_remove(
+        current_cache_size=100,
+        max_cache_size=100,
+        entries={
+            evictable: _resident_metadata(
+                100, _write_chunk(tmp_path, "a", 100), can_evict=True
+            )
+        },
+    )
+    cast(MagicMock, backend.cache_policy.get_evict_candidates).side_effect = (
+        lambda d, num_candidates: [evictable] if evictable in d else []
+    )
+
+    with patch(
+        "lmcache.v1.storage_backend.local_disk_backend.asyncio.run_coroutine_threadsafe"
+    ):
+        backend.submit_put_task(key, _create_memory_obj(100))
+
+    assert evictable not in backend.dict
+    assert backend.current_cache_size == 100

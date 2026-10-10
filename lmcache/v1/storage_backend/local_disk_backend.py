@@ -280,6 +280,11 @@ class LocalDiskBackend(StorageBackendInterface):
             self.usage -= size
             self.stats_monitor.update_local_storage_usage(self.usage)
 
+            # Sole owner of this deduction: every deletion path funnels through
+            # here, so a caller deducting `size` too would free the same bytes
+            # twice and let the disk grow past max_cache_size.
+            self.current_cache_size -= size
+
             # NOTE: The following code will cause deadlock
             # res = asyncio.run_coroutine_threadsafe(
             #     self.disk_worker.submit_task("delete", os.remove, path),
@@ -411,9 +416,6 @@ class LocalDiskBackend(StorageBackendInterface):
                             "No eviction candidates found. Disk space under pressure."
                         )
                         return None
-
-                    for evict_key in evict_keys:
-                        self.current_cache_size -= self.dict[evict_key].size
 
                     self.batched_remove(evict_keys, force=False)
 
