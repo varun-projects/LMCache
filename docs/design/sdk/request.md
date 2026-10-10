@@ -41,8 +41,11 @@ fields mean different things:
   Replaced when the KV is modified via `update`.
 - **`_suffix_tokens`** — tokens *not* in the stored KV: the non-chunk-aligned
   tail left after `modify_kv`. Managed by the next `generate`.
-- **`_decoded` / `_text_parts`** — cumulative generated count / text across all
-  `generate`s (`decoded_tokens`, `output_text`); unaffected by compaction.
+- **`_decoded` / `_text_parts` / `_token_parts`** — cumulative generated count /
+  text / token ids across all `generate`s (`decoded_tokens`, `output_text`,
+  `output_tokens`); unaffected by compaction. Kept separate from `tokens`
+  because `update` replaces the live sequence, which would otherwise lose or
+  misattribute the generation history.
 - **`done`** — True once a `generate` yields `< max_tokens` (EOS). Reset when
   `update` is called.
 
