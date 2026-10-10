@@ -467,11 +467,24 @@ class SegmentTokenDatabase(TokenDatabase):
         self.sep_tokens = torch.tensor(self.sep_tokens, device="cpu")
         self.sep_len = len(self.sep_tokens)
 
+        if self.sep_len == 0:
+            logger.warning(
+                "blend_special_str %r encodes to a single token, which the "
+                "leading-token strip removes. No separator is left, so every "
+                "request will be cached as one segment instead of being split.",
+                config.blend_special_str,
+            )
+
     def _fast_split_by_subtensor(self, tokens: torch.Tensor) -> Iterable[torch.Tensor]:
-        """Match the `sep_tokens` with sliding windows"""
+        """Match the `sep_tokens` with sliding windows
+
+        When there is no usable separator, or `tokens` is shorter than the
+        separator, `tokens` is yielded unsplit as the only chunk.
+        """
 
         if self.sep_len == 0 or len(tokens) < self.sep_len:
             yield tokens
+            return
 
         # Unfold into sliding windows
         # shape: (num_tokens-sep_len+1, sep_len)

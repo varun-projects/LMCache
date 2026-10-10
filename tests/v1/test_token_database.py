@@ -152,3 +152,78 @@ def test_process_tokens_returns_int_keys_for_bytes_hash_func() -> None:
         assert isinstance(hash_val, int), f"Expected int, got {type(hash_val)}"
         # Must fit in uint64 (msgpack range: 0 to 2**64 - 1)
         assert 0 <= hash_val <= 2**64 - 1
+
+
+class _FixedIdsTokenizer:
+    """Tokenizer stub returning a preset id list, bypassing any model download."""
+
+    def __init__(self, ids: list[int]) -> None:
+        self._ids = ids
+
+    def encode(self, text: str) -> list[int]:
+        return list(self._ids)
+
+
+def _segment_db(monkeypatch, encoded_sep_ids: list[int]) -> SegmentTokenDatabase:
+    """Build a SegmentTokenDatabase whose separator comes from a stub tokenizer.
+
+    SegmentTokenDatabase strips the first encoded id, so `encoded_sep_ids` is
+    the tokenizer output *before* that strip.
+    """
+    monkeypatch.setattr(
+        "lmcache.v1.token_database.AutoTokenizer",
+        type(
+            "_StubAutoTokenizer",
+            (),
+            {
+                "from_pretrained": staticmethod(
+                    lambda *a, **kw: _FixedIdsTokenizer(encoded_sep_ids)
+                )
+            },
+        ),
+    )
+    cfg = LMCacheEngineConfig.from_legacy(blend_special_str=" # # ")
+    return SegmentTokenDatabase(cfg, dumb_metadata_with_model_name("stub-model"))
+
+
+def test_segment_db_keeps_input_shorter_than_separator_whole(monkeypatch) -> None:
+    """Tokens shorter than the separator cannot contain it, so they form one chunk.
+
+    The sliding-window match is undefined for this input, so reaching it at all
+    raises RuntimeError from unfold().
+    """
+    db = _segment_db(monkeypatch, [0, 11, 12, 13])
+    tokens = torch.tensor([5, 6], dtype=torch.long)
+
+    results = list(db.process_tokens(tokens=tokens, make_key=False))
+
+    assert len(results) == 1
+    assert (results[0][0], results[0][1]) == (0, 2)
+
+
+def test_segment_db_keeps_input_whole_when_separator_is_empty(monkeypatch) -> None:
+    """An empty separator must not split anything.
+
+    With a zero-width window every position compares equal vacuously, so the
+    unguarded path reports a match at every index and shreds one request into
+    len(tokens) + 1 chunks.
+    """
+    db = _segment_db(monkeypatch, [0])
+    assert db.sep_len == 0
+    tokens = torch.tensor([5, 6, 7, 8, 9], dtype=torch.long)
+
+    results = list(db.process_tokens(tokens=tokens, make_key=False))
+
+    assert len(results) == 1
+    assert (results[0][0], results[0][1]) == (0, 5)
+
+
+def test_segment_db_splits_on_separator(monkeypatch) -> None:
+    """The normal multi-segment path is unaffected by the degenerate-input guard."""
+    db = _segment_db(monkeypatch, [0, 101, 102])
+    sep = [101, 102]
+    tokens = torch.tensor([1, 2, 3] + sep + [4, 5] + sep + [6], dtype=torch.long)
+
+    results = list(db.process_tokens(tokens=tokens, make_key=False))
+
+    assert [(start, end) for start, end, _ in results] == [(0, 3), (5, 7), (9, 10)]
