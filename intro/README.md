@@ -1,8 +1,9 @@
 # LMCache — an engineer's guide
 
 A from-scratch technical guide to the [LMCache](https://github.com/LMCache/LMCache)
-codebase: what it is, how it is put together, how each major subsystem works, and
-how five real bugs were diagnosed and fixed.
+codebase: what it is, how it is put together, how each major subsystem works, how ten
+real bugs were diagnosed and fixed, and how three merged PRs made the design calls they
+did.
 
 Written for someone who has just cloned the repository and wants a mental model
 before touching code.
@@ -53,19 +54,36 @@ entry point.
 
 ## Issue deep dives
 
-How five real, **already-fixed** bugs were found and solved — the most useful way to
+How ten real, **already-fixed** bugs were found and solved — the most useful way to
 learn a codebase. Each walks the symptom, the root cause, the actual merged diff, and
 why the fix is correct.
 
-See the [deep dive index](issue-deep-dives/README.md).
+See the [deep dive index](issue-deep-dives/README.md) for reading order, recurring themes
+and a per-document verification summary.
 
 | Difficulty | Issue | One-line summary |
 |---|---|---|
 | **Difficult** | [#5151](issue-deep-dives/difficult-5151-mamba-full-hit-restoration.md) | Lookup reported a full hit but restored the wrong KV for long prefixes — broke somewhere between 114 and 128 chunks |
+| **Difficult** | [#5713](issue-deep-dives/difficult-5713-lora-cache-key-collision.md) | Every LoRA adapter shared the base model's cache keys, so requests were served KV computed under different weights |
+| **Difficult** | [#6392](issue-deep-dives/difficult-6392-prefetch-l1-landing-race.md) | A chunk that landed in L1 during the L2 lookup became a miss, and one dropped chunk truncated the whole prefix |
 | **Difficult** | [#5022](issue-deep-dives/difficult-5022-turboquant-sm80-bfloat16.md) | A TurboQuant Triton kernel asserted on A100 (SM80) for bfloat16 models |
 | Medium | [#4416](issue-deep-dives/medium-4416-percentile-off-by-one.md) | Trace-replay p90/p99 reported the maximum, via an off-by-one at whole ranks |
 | Medium | [#4591](issue-deep-dives/medium-4591-sdk-output-tokens.md) | `LMCacheRequestStream.output_tokens` counted the prompt as output |
 | Medium | [#4698](issue-deep-dives/medium-4698-nixl-pool-slot-units.md) | A NIXL L2 adapter reported *negative* pool usage |
+| Medium | [#5115](issue-deep-dives/medium-5115-address-manager-zero-size.md) | A zero-byte allocation fractured the free list — and the first fix turned that into a cache wipe |
+| Medium | [#6543](issue-deep-dives/medium-6543-zmq-grpc-fail-fast.md) | A ZMQ client pointed at a gRPC server hung for 300 s, then blamed the wrong thing |
+| Medium | [#6698](issue-deep-dives/medium-6698-blend-matcher-slot-ownership.md) | Evicting one copy of a chunk permanently hid another copy that was still stored |
+
+## PR walkthroughs
+
+Three merged PRs read as **design decisions** rather than bug hunts: what the options were,
+and what the author traded. See the [walkthrough index](pr-walkthroughs/README.md).
+
+| PR | Area | The decision |
+|---|---|---|
+| [#6767](pr-walkthroughs/6767-blend-chunk-fingerprinting.md) | CacheBlend × Mamba | Who belongs in an `all(...)` quorum once a member abstains by design |
+| [#6754](pr-walkthroughs/6754-grpc-auto-server-mode.md) | gRPC transport | Changing a default to "the best thing installed", without weakening explicit values |
+| [#6752](pr-walkthroughs/6752-ci-stale-nightly-provenance.md) | CI / release engineering | A green nightly run that proved nothing for two months |
 
 ## Conventions used throughout
 
