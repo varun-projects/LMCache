@@ -75,7 +75,7 @@ one engine, several engines — even engines of different kinds — can share it
 LMCache is **not** a serving engine and does not schedule or run models. It is a
 layer *beneath* one. The engines are integrated through adapters under
 `lmcache/integration/<engine>/`, and the repository keeps that boundary
-deliberately sharp (see [§2.6](02-architecture.md#26-architectural-boundaries-and-why-they-exist)):
+deliberately sharp (see [§2.8](02-architecture.md#28-the-boundaries-that-make-it-extensible)):
 
 | Engine | Integration | Entry point |
 |---|---|---|
@@ -174,7 +174,7 @@ and
 Those keyed objects then live in a hierarchy — GPU (L0) → host memory (L1) →
 external backends (L2) — with the MP server deciding what sits where. The
 hierarchy, and the paths between its tiers, are the subject of
-[§2.3](02-architecture.md#23-the-storage-hierarchy-l0--l1--l2).
+[§2.3](02-architecture.md#23-the-storage-hierarchy).
 
 ---
 

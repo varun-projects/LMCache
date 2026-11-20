@@ -16,7 +16,7 @@ and how L2 eviction and per-tenant quotas work.
 The upstream design docs for this area are unusually complete and live at
 [`docs/design/v1/distributed/l2_adapters/`](https://github.com/LMCache/LMCache/tree/53bde913de1adae2a380fe0c2de8d2b9355b4702/docs/design/v1/distributed/l2_adapters).
 This document cites them where they are accurate and flags the places where they
-have drifted from the code (see [Where the design docs are stale](#where-the-design-docs-are-stale)).
+have drifted from the code (see [Where the design docs are stale](#9-where-the-design-docs-are-stale)).
 
 ---
 

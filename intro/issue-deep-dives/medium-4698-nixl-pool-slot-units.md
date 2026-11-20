@@ -398,18 +398,33 @@ Found 1 error.
 *(Real output. Each probe file contains one private-member access; with both globs present,
 none is reported. The same result on ruff 0.17.6.)*
 
-Against the actual tree, with the rule forced on:
+Against the actual tree at `53bde913`, with the rule forced on:
 
 ```
 $ ruff check --isolated --select SLF --statistics lmcache/v1/distributed/
 15    SLF001  private-member-access
 $ ruff check --isolated --select SLF --statistics lmcache/v1/multiprocess/
-7     SLF001  private-member-access
+1     SLF001  private-member-access
+
 $ ruff check --select SLF lmcache/v1/distributed/ lmcache/v1/multiprocess/   # repo config
 All checks passed!
+exit=0
 ```
 
-**22 real violations masked**, one of which is the exact line this issue asked to clean up.
+and the line this issue asked to clean up is one of the 15:
+
+```
+$ ruff check --isolated --select SLF \
+      lmcache/v1/distributed/l2_adapters/nixl_store_l2_adapter.py
+lmcache/v1/distributed/l2_adapters/nixl_store_l2_adapter.py:694:14: SLF001 Private member accessed: `_lock`
+    |
+693 |         pool = self.nixl_agent.pool
+694 |         with pool._lock:
+    |              ^^^^^^^^^^ SLF001
+695 |             pool_free_slots = len(pool.indices)
+```
+
+**16 real violations masked**, including the exact one the issue raised.
 So the "departure" in §5.2 is not really a judgement call that someone made and I second-
 guessed — the guard rail that would have raised it during review was not reporting. Worth
 a separate upstream issue; it is out of scope for this one, and I have not filed it.
@@ -440,7 +455,7 @@ point at the same discipline: push the correction to where the wrong value is *p
 clamp in `describe.py` would have made the screen look right and the contract stay broken.
 
 **When a standard is not enforced, assume it is not followed.** `AGENTS.md` says SLF is
-enforced in two directories. It is enforced in none, and there are 22 violations. The
+enforced in two directories. It is enforced in none, and there are 16 violations. The
 project's intent was documented, implemented, and quietly inverted by a glob — which is a
 better argument for testing your lint config than any amount of policy text.
 

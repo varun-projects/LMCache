@@ -513,7 +513,7 @@ sequenceDiagram
         M->>M: "cache_context.transfer_object_group(... H2D ...)"
         M->>M: "submit_callback_to_stream('finish_read_by_owner', completion)"
         M-->>P: "(event_ipc_handle, success)"
-        P->>L: "output_queue.put(frames); _output_efd.notify()"
+        P->>L: "output_queue.put(frames) then _output_efd.notify()"
         L-->>W: "send_multipart(prefix + msgspec response)"
     end
 ```
